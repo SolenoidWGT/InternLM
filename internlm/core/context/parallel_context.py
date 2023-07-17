@@ -4,6 +4,7 @@
 # adopted from https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context
 
 import inspect
+import math
 import random
 import socket
 import sys
@@ -472,6 +473,26 @@ class ParallelContext(metaclass=SingletonMeta):
                     self._register_dist(*args)
             else:
                 self._register_dist(*parallel_setting)
+
+        while world_size != 0:
+            world_size /= 2
+
+            if isinstance(parallel_setting, list):
+                for args in parallel_setting:
+                    self._register_dist(*args)
+            else:
+                self._register_dist(*parallel_setting)
+
+        binary_group_num = int(math.log(self.world_size, 2))
+        binary_filter_group = []
+        ranks_num_in_group = 1
+        for _ in range(len(binary_group_num)):
+            ranks_num_in_group *= 2
+            single_binary_group_num = self.world_size / ranks_num_in_group
+            for gid in range(single_binary_group_num):
+                ranks = [gid * ranks_num_in_group + j for j in range(ranks_num_in_group)]
+                binary_filter_group.append(dist.new_group(ranks))
+        return binary_filter_group
 
     def is_initialized(self, parallel_mode: ParallelMode):
         """Returns a boolean value indicating whether `parallel_mode` is initialized

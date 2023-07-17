@@ -32,6 +32,29 @@ class ParallelMode(Enum):
     ZERO1 = "zero1"
 
 
+class ParallelMode2(Enum):
+    # zero1 parallel
+    MODE_2 = "mode2"
+
+    # zero1 parallel
+    MODE_4 = "mode4"
+
+    # zero1 parallel
+    MODE_8 = "mode8"
+
+    # zero1 parallel
+    MODE_16 = "mode16"
+
+    # zero1 parallel
+    MODE_32 = "mode32"
+
+    # zero1 parallel
+    MODE_64 = "mode64"
+
+    # zero1 parallel
+    MODE_128 = "mode128"
+
+
 class ProcessGroupInitializer(ABC):
     """An object, knowing the parallelism configuration, that initializes parallel groups.
 
@@ -330,5 +353,51 @@ class Initializer_Zero1(ProcessGroupInitializer):
                     process_group = group
                     cpu_group = group_cpu
                     ranks_in_group = ranks
+
+        return local_rank, group_world_size, process_group, cpu_group, ranks_in_group, mode
+
+
+class Initializer_FaultDetection(ProcessGroupInitializer):
+    """A ProcessGroupInitializer for data parallelism.
+
+    Args:
+        rank (int): The rank of current process.
+        world_size (int): Size of whole communication world.
+        data_parallel_size (int): Size of data parallel.
+        pipeline_parallel_size (int): Size of pipeline parallel.
+        tensor_parallel_size (int): Size of tensor parallel.
+        zero1_parallel_size (int): Size of zero1 parallel.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def init_dist_group(self, group_num, ranks_num_in_group, use_cpu: bool = False):
+        """Initialize data parallel groups, and assign local_ranks and groups to each gpu.
+
+        Returns:
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                A Data parallelism's information tuple.
+        """
+        local_rank = None
+        ranks_in_group = None
+        process_group = None
+        cpu_group = None
+        group_world_size = None
+        mode = ParallelMode.DETECTION
+        for gid in range(group_num):
+            ranks = [gid * ranks_num_in_group + j for j in range(ranks_num_in_group)]
+            group = dist.new_group(ranks)
+            if use_cpu:
+                group_cpu = dist.new_group(ranks, backend="gloo") if dist.get_backend() != "gloo" else group
+            else:
+                group_cpu = None
+
+            if self.rank in ranks:
+                local_rank = ranks.index(self.rank)
+                group_world_size = len(ranks)
+                process_group = group
+                cpu_group = group_cpu
+                ranks_in_group = ranks
 
         return local_rank, group_world_size, process_group, cpu_group, ranks_in_group, mode
